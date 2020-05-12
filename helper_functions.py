@@ -4,6 +4,8 @@ from tqdm.notebook import tqdm
 import pandas as pd
 from collections import defaultdict
 import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
 def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index, transcript_grouped,this_person):
     '''
@@ -12,15 +14,15 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
     However ther's also alot of rows with multiple from 
     the same combination (user/offer), which may even overlap in time.
     
-    INPUT:
-    person_offer_df: append to this
-    this offer: current offer
-    person_id: offer_index
-    transcript_grouped: only one offer type, one person
-    this_person: Information about current user
+    Arguments:
+    person_offer_df -- append to this
+    this offer -- current offer
+    person_id -- offer_index
+    transcript_grouped -- only one offer type, one person
+    this_person -- Information about current user
     
-    OUTPUT:
-    person_offer_df: as input but with the new row(s).
+    Returns:
+    person_offer_df -- as input but with the new row(s).
     '''
 
     to_be_appended = defaultdict(list)
@@ -35,8 +37,6 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
         to_be_appended['completed'].append(item['complete'] is not None)
         to_be_appended['viewed_after'].append(False)
 
-        
-    #todo, doublecheck all times
     current = []
     view_unknown = []
     validity = this_offer['duration']*24 #in hours
@@ -92,13 +92,18 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
         return pd.DataFrame(new_df)
     
 def create_person_offer(transcript,portfolio,profile):
-    '''
-    A function to generete a new df with person and offer per row,
+    """ A function to generete a new df with person and offer per row,
 
-    INPUT:
-    '''
+    Arguments:
+        transcript -- Dataframe that contains all events
+        portfolio -- Dataframe that contains datails of offers 
+        profile -- Dataframe that contains details about customers
+
+    Returns:
+        person_offer_df -- new DataFrame
+    """    
     person_offer_df = None
-    # This will not include transaction, so we need anoyher new table for those.
+    # This will not include transaction, so we need another new table for those.
     for (person_id, offer_index), transcript_grouped in tqdm(transcript.dropna(subset=['offer_index']).groupby(['person','offer_index'])):
         this_offer = portfolio.loc[offer_index]
         this_person = profile.loc[person_id]
@@ -108,10 +113,34 @@ def create_person_offer(transcript,portfolio,profile):
 
 
 def get_before_after_mean(x, person_transaction):
+    """ Appends the mean of all transactions 
+    before and after an event.
+    Note, the Dataframe need to contain the
+    columns to be filled (for faster excecution)
+
+    Arguments:
+        x -- Pandas series to be modified
+        person_transaction  -- Dataframe that contains all transaction
+
+    Returns:
+        x  -- input with new columns
+    """
 
     person_id = x.person
     
     def split_before_after(time, columns):
+        """This function will split a dataframe
+        into 3 parts, before, on and after
+
+        Arguments:
+            time -- time in hours
+            columns -- series with current persons transaction
+
+        Returns:
+            before -- mean daily spending before event
+            current -- mean daily spending on event day
+            after -- mean daily spending after event
+        """        
         if np.isnan(time):
             before = []
             current = []
@@ -124,6 +153,8 @@ def get_before_after_mean(x, person_transaction):
         return (before, current, after)
     
     def mean0(items):
+        '''Returns the mean, if empty return 0
+        '''
         if len(items) > 0:
             return items.mean()
         else:
@@ -151,4 +182,80 @@ def get_before_after_mean(x, person_transaction):
         pass
         
     return x
+
+def clean_cut_name(names):
+    '''Takes a default pd.cut name and makes it
+    more readable and without special characters.
+    '''
+    ret = []
+    for s in names:
+        lower = int(float(s[s.find('(')+1:s.find(',')]))
+        upper = int(float(s[s.find(',')+1:s.find(']')]))
+        ret.append(f"{s[:s.find('(')]}{lower}_to_{upper}")
+    return ret
+
+def range_to_cat(df,col,n):
+    """takes a column of continious data
+    and turn it into categorical data
+    with a nice name for each
+    {name}_{firstvalue}-{lastvalue}
+
+    Arguments:
+        df -- ipnut DataFrama
+        col -- Column to be modified
+        n -- number of categories
+
+    Returns:
+        df -- input dataframe with n new columns
+        newcols -- list of name of the new columns
+    """    
+    cat_df, bins = pd.cut(df[col], n, retbins=True)
+    newcols = pd.get_dummies(cat_df, prefix=col, prefix_sep='_', drop_first=False, dummy_na=False) 
+    newcols.columns = clean_cut_name(newcols.columns)
+    df = pd.concat([df, newcols], axis=1)
+    return df, list(newcols)
+
+def train_model(df,model,y_cols, x_cols, x_convert_to_cat=[]):
+    '''
+    Arguments:
+    df -- dataframe to learn from
+    model -- model used to train
+    y_cols -- columns used for ground truth 
+    x_cols -- columns to learn from
+    x_conver_to cat -- list of tuples pairs, will be added to x
+                    these should NOT be in x_cols too 
+            
+    Returns:
+    '''
+    assert len(set(x_cols).intersection(set(y_cols))) == 0
+    for col in x_convert_to_cat:
+        df, new_x = range_to_cat(df, *col)
+        x_cols += new_x
+        
+    df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=y_cols)
+    y = df[y_cols]
+    
+    X = df[x_cols].fillna(-1)
+
+    #split the data into train and test
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state=42)
+
+    #fit the model and obtain pred response
+    model.fit(X_train, y_train)
+    y_test_preds = model.predict(X_test)
+    y_train_preds = model.predict(X_train)
+
+    try:
+        for i in range(y_train.shape[-1]):
+            test = (y_test.iloc[:,i].values, y_test_preds[:,i])
+            train = (y_train.iloc[:,i].values, y_train_preds[:,i])
+            print(f"---------------{y_train.columns[i]}------train:-------------")
+            print(classification_report(*train))
+            print(f"----TEST---")
+            print(classification_report(*test))
+    except Exception as e:
+        print('could not do report',e)
+
+    return model, x_cols, y_test_preds, y_train_preds,y_test,y_train, X, y
+
 
