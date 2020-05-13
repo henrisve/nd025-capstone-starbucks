@@ -5,7 +5,9 @@ import pandas as pd
 from collections import defaultdict
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report,confusion_matrix,roc_curve,auc
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index, transcript_grouped,this_person):
     '''
@@ -154,11 +156,22 @@ def get_before_after_mean(x, person_transaction):
     
     def mean0(items):
         '''Returns the mean, if empty return 0
+        It gives  weighted version, the second is worth
+        0.75 of the first, third 0.75 of second etc etc
+        This will make sure that items bought near the complete
+        date is more importand than a week or so later
         '''
-        if len(items) > 0:
-            return items.mean()
-        else:
-            return 0
+        f,div,result=1,0,0
+        for x in items:
+            result+=(x*f)
+            div+=f
+            f*=0.75
+        if div:
+            result/=div
+        # if len(items) > 0:
+        #     return items.mean()
+        # else:
+        #     return 0
     
     try:
         person_row = person_transaction.loc[person_id]
@@ -244,7 +257,22 @@ def train_model(df,model,y_cols, x_cols, x_convert_to_cat=[]):
     model.fit(X_train, y_train)
     y_test_preds = model.predict(X_test)
     y_train_preds = model.predict(X_train)
+    y_test_proba = model.predict_proba(X_test)
+    y_train_proba = model.predict_proba(X_train)
 
+
+    return model, x_cols, y_test_preds, y_train_preds, y_test, y_train, y_test_proba, y_train_proba #, X, y
+
+
+def print_classification_report(y_train,y_test,y_train_preds,y_test_preds):
+    """Print a summary of the predicted result
+
+    Arguments:
+        y_train {[type]} -- [description]
+        y_test {[type]} -- [description]
+        y_train_preds {[type]} -- [description]
+        y_test_preds {[type]} -- [description]
+    """    
     try:
         for i in range(y_train.shape[-1]):
             test = (y_test.iloc[:,i].values, y_test_preds[:,i])
@@ -254,8 +282,75 @@ def train_model(df,model,y_cols, x_cols, x_convert_to_cat=[]):
             print(f"----TEST---")
             print(classification_report(*test))
     except Exception as e:
-        print('could not do report',e)
+        try:
+            print(f"--------train:-------------")
+            print(classification_report(y_train, y_train_preds))
+            print(f"---------TEST--------------")
+            print(classification_report(y_test, y_test_preds))
+        except Exception as e2:
+            print('could not do report',e, e2)
+            
+def printRocCurves(y_test,y_test_proba,y_cols, x_axis_max=1, print_thold=False):
 
-    return model, x_cols, y_test_preds, y_train_preds,y_test,y_train, X, y
+    # if len(y_test.shape) == 1 or y_test.shape[-1] <= 1:
+    #     y_test = [y_test]
+    #     y_test_preds = [y_test_preds]
+    print(np.array(y_test).T.shape, np.array(y_test_proba).shape)
+    plt.figure(figsize=(10,10))
+    for name, y, p in zip(y_cols, np.array(y_test).T, np.array(y_test_proba)[:,:,1]):
+        print(name,y.shape,p.shape)
+        fpr, tpr, thresholds= roc_curve(y,p)
+        thresholds = np.clip(thresholds, 0.0, 1.0)
+        roc_auc = auc(fpr, tpr)
 
+        #Calculate thresholds
+        bigt=0
+        for ff,tt in zip(fpr,thresholds):
+            if ff >= x_axis_max:
+                bigt=tt
+                break
+        if bigt==1.0:
+            bigt=0
+        plt.plot(fpr, tpr, label=f'{name} - (a = {roc_auc:0.5f})')
 
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, x_axis_max])
+    plt.ylim([0.0, 1.0])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver operating characteristic')
+    plt.legend(loc="lower right",fancybox=True, framealpha=1)
+    
+    if print_thold:
+        #this woks less well with multiple classes. for now, print last only
+        ax2 = plt.gca().twinx()
+        ax2.plot(fpr, thresholds, markeredgecolor='r',linestyle='dashed', color='r', alpha = 0.3)
+        ax2.set_ylabel(f'Threshold - {y_cols[-1]}',color='r')
+        ax2.ticklabel_format(useOffset=False, style='plain')
+        ax2.set_ylim([bigt,1.0])
+
+    plt.show()
+
+def plot_cmatrix(y_test, y_test_preds, y_cols):
+    cm = confusion_matrix(y_test.values.argmax(axis=1), y_test_preds.argmax(axis=1))
+    #cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    df_cm = pd.DataFrame(cm, index = y_cols,
+                    columns = y_cols)
+    plt.figure(figsize = (10,7))
+    sns.heatmap(df_cm, annot=True,fmt="d")
+
+def print_feature_importance(model, x_cols):
+    # Features importances
+    importances = model.feature_importances_
+    # calculate standard deviation
+    std = np.std([tree.feature_importances_ for tree in model.estimators_],axis=0)
+    indices = np.argsort(importances)[::-1]
+    feature_list = x_cols
+    ff = np.array(feature_list)
+
+    # plot the figure
+    plt.figure(figsize = (15,5))
+    plt.title("Feature importances")
+    plt.bar(range(len(x_cols)), importances[indices],yerr=std[indices])
+    plt.xticks(range(len(x_cols)), ff[indices], rotation=90)
+    plt.show()
