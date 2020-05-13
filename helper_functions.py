@@ -144,23 +144,33 @@ def get_before_after_mean(x, person_transaction):
             after -- mean daily spending after event
         """        
         if np.isnan(time):
-            before = []
-            current = []
-            after = []
-        else:
-            currentday = int(time)//24
-            before = columns[:currentday]
-            current = columns[currentday]
-            after = columns[currentday+1:]
+            return [], [], []
+        
+        currentday = int(time)//24
+        before = columns[:currentday]
+        current = columns[currentday]
+        after = columns[currentday+1:]
         return (before, current, after)
     
-    def mean0(items):
+    def split_between(time_view,time_complete, duration, columns):
+        if np.isnan(time_view):
+            return []
+        start = int(time_view)//24
+        if np.isnan(time_complete):
+            end = start + duration
+        else:
+            end = int(time_complete)//24
+        return columns[start:end+1]
+            
+    def mean_weighted(items, reverse=False):
         '''Returns the mean, if empty return 0
         It gives  weighted version, the second is worth
         0.75 of the first, third 0.75 of second etc etc
         This will make sure that items bought near the complete
         date is more importand than a week or so later
         '''
+        if reverse:
+            items = reversed(items)
         f,div,result=1,0,0
         for x in items:
             result+=(x*f)
@@ -168,11 +178,21 @@ def get_before_after_mean(x, person_transaction):
             f*=0.75
         if div:
             result/=div
-        # if len(items) > 0:
-        #     return items.mean()
-        # else:
-        #     return 0
+        return result
     
+    def mean0(items):
+        '''Returns the mean, if empty return 0'''
+        if len(items) > 0:
+            return items.mean()
+        else:
+            return 0
+    
+    #when is an offer?
+    # recived time is actually pretty useless, other than calculating the end time
+    # so, an offers time, where we coumt the revenue, is all the days from viewed,
+    # until completed, either by complete, or by expired
+    # if we then take the mean from these days, 
+    # and after and before as weighted, that should be rather fair, no?
     try:
         person_row = person_transaction.loc[person_id]
         col = person_transaction.columns
@@ -191,6 +211,12 @@ def get_before_after_mean(x, person_transaction):
         x.before_complete = mean0(person_row[before_complete])
         x.same_day_complete = person_row[current_complete].sum()
         x.after_complete = mean0(person_row[after_complete])
+        
+        between = split_between(x.viewed_time,x.completed_time, x.duration, col)
+        x.w_before = mean_weighted(person_row[before_view],reverse=True)
+        x.sum_during = person_row[between].sum()
+        x.mean_during = mean0(person_row[between])
+        x.w_after = mean_weighted(person_row[after_complete])
     except KeyError as e:
         pass
         
@@ -223,7 +249,7 @@ def range_to_cat(df,col,n):
         newcols -- list of name of the new columns
     """    
     cat_df, bins = pd.cut(df[col], n, retbins=True)
-    newcols = pd.get_dummies(cat_df, prefix=col, prefix_sep='_', drop_first=False, dummy_na=False) 
+    newcols = pd.get_dummies(cat_df, prefix=col, prefix_sep='_', drop_first=True, dummy_na=False) 
     newcols.columns = clean_cut_name(newcols.columns)
     df = pd.concat([df, newcols], axis=1)
     return df, list(newcols)
@@ -295,10 +321,8 @@ def printRocCurves(y_test,y_test_proba,y_cols, x_axis_max=1, print_thold=False):
     # if len(y_test.shape) == 1 or y_test.shape[-1] <= 1:
     #     y_test = [y_test]
     #     y_test_preds = [y_test_preds]
-    print(np.array(y_test).T.shape, np.array(y_test_proba).shape)
     plt.figure(figsize=(10,10))
     for name, y, p in zip(y_cols, np.array(y_test).T, np.array(y_test_proba)[:,:,1]):
-        print(name,y.shape,p.shape)
         fpr, tpr, thresholds= roc_curve(y,p)
         thresholds = np.clip(thresholds, 0.0, 1.0)
         roc_auc = auc(fpr, tpr)
@@ -338,19 +362,23 @@ def plot_cmatrix(y_test, y_test_preds, y_cols):
                     columns = y_cols)
     plt.figure(figsize = (10,7))
     sns.heatmap(df_cm, annot=True,fmt="d")
+    plt.show()
 
 def print_feature_importance(model, x_cols):
     # Features importances
-    importances = model.feature_importances_
-    # calculate standard deviation
-    std = np.std([tree.feature_importances_ for tree in model.estimators_],axis=0)
-    indices = np.argsort(importances)[::-1]
-    feature_list = x_cols
-    ff = np.array(feature_list)
+    try:
+        importances = model.feature_importances_
+        # calculate standard deviation
+        std = np.std([tree.feature_importances_ for tree in model.estimators_],axis=0)
+        indices = np.argsort(importances)[::-1]
+        feature_list = x_cols
+        ff = np.array(feature_list)
 
-    # plot the figure
-    plt.figure(figsize = (15,5))
-    plt.title("Feature importances")
-    plt.bar(range(len(x_cols)), importances[indices],yerr=std[indices])
-    plt.xticks(range(len(x_cols)), ff[indices], rotation=90)
-    plt.show()
+        # plot the figure
+        plt.figure(figsize = (15,5))
+        plt.title("Feature importances")
+        plt.bar(range(len(x_cols)), importances[indices],yerr=std[indices])
+        plt.xticks(range(len(x_cols)), ff[indices], rotation=90)
+        plt.show()
+    except:
+        print('could not print features importance')
