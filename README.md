@@ -11,7 +11,7 @@ transaction data.
 The blog post for this project can be found here: <to be inserted when published>
 
 # File Descriptions
-This repo contaians the following files \
+This repo contaians the following files:
 
 .\
 ├── helper_functions.py                 # All the helper functions used\
@@ -27,11 +27,11 @@ This repo contaians the following files \
 Clone the project and open the Notebook for further instructions.
 
 # Required libraries
-pandas==1.0.3
-tqdm==4.46.0
-scikit-learn==0.22.2.post1
-xgboost==1.0.2
-scipy==1.4.1
+* pandas==1.0.3
+* tqdm==4.46.0
+* scikit-learn==0.22.2.post1
+* xgboost==1.0.2
+* scipy==1.4.1
 
 # Licensing, Authors, Acknowledgements, etc.
 Thanks to Starbucks for the data, and udacity for a great nanodegree.
