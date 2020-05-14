@@ -17,14 +17,15 @@ def append_one_person_offer(to_be_appended, this_offer, person_id, offer_index, 
     the same combination (user/offer), which may even overlap in time.
     
     Arguments:
-    person_offer_df -- append to this
+    to_be_appended -- dict that we will append to
     this offer -- current offer
-    person_id -- offer_index
+    person_id -- Id if the person
+    offer_index -- index of the offer
     transcript_grouped -- only one offer type, one person
     this_person -- Information about current user
     
     Returns:
-    person_offer_df -- as input but with the new row(s).
+    to_be_appended -- as input but with the new row(s).
     '''
     if to_be_appended is None:
         to_be_appended = defaultdict(list)
@@ -51,10 +52,10 @@ def append_one_person_offer(to_be_appended, this_offer, person_id, offer_index, 
 
     current = []
     view_unknown = []
-    validity = this_offer['duration']*24 #in hours
+    validity = this_offer['duration']*24 
     debuglist=[]
     for row in transcript_grouped.itertuples():
-        current_time = row.time # in hours
+        current_time = row.time
         current_event = row.event
         debuglist.append((row.event,row.time))
         if current and current[0]['start']+validity < current_time:
@@ -68,7 +69,7 @@ def append_one_person_offer(to_be_appended, this_offer, person_id, offer_index, 
         elif current_event=='offer viewed':
             if len(current)>1:
                 view_unknown.append(current_time)
-            elif current and view_unknown: # and :
+            elif current and view_unknown:
                 current[0]['view'] = view_unknown.pop(0)
                 view_unknown.append(current_time)
             elif current:
