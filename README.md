@@ -11,15 +11,17 @@ transaction data.
 The blog post for this project can be found here: <to be inserted when published>
 
 # File Descriptions
-This repo contaians the following files 
-├── helper_functions.py                 # All the helper functions used
-├── Starbucks_Capstone_notebook.ipynb   # The main notebook 
-├── README.md                           # This file
-└── data                    # Datasets
-    ├── person_offer.csv    # Dataframe with person and offer per row
-    ├── portfolio.json      # Containing offer ids and meta data about each offer (duration, type, etc.)
-    ├── profile.json        # Demographic data for each customer
-    └── transcript.json     # Records for transactions, offers received, offers viewed, and offers completed
+This repo contaians the following files \
+
+.
+├── helper_functions.py                 # All the helper functions used\
+├── Starbucks_Capstone_notebook.ipynb   # The main notebook \
+├── README.md                           # This file\
+└── data                    # Datasets\
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── person_offer.csv    # Dataframe with person and offer per row\
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── portfolio.json      # Containing offer ids and meta data about each offer (duration, type, etc.)\
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── profile.json        # Demographic data for each customer\
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── transcript.json     # Records for transactions, offers received, offers viewed, and offers completed\
 
 # How to Interact with your project
 Clone the project and open the Notebook for further instructions.
