@@ -30,14 +30,13 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
     to_be_appended = defaultdict(list)
     def append_final(item):
         # this metod takes complete item and appends it
-        to_be_appended['person'].append(person_id)
-        to_be_appended['offer'].append(offer_index)
         to_be_appended['start'].append(item['start'])
         to_be_appended['viewed_time'].append(item['view'])
         to_be_appended['completed_time'].append(item['complete'])
         to_be_appended['viewed'].append(item['view'] is not None)
         to_be_appended['completed'].append(item['complete'] is not None)
-        to_be_appended['viewed_after'].append(False)
+        to_be_appended['viewed_after'].append(0)
+        to_be_appended['offer_burst'].append(item['offer_burst'])
 
     current = []
     view_unknown = []
@@ -52,7 +51,8 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
         if len(current) == 1 and view_unknown:
             current[0]['view'] = view_unknown.pop(0)
         if current_event == 'offer received':
-            current.append({'start':current_time,'view':None, 'complete':None})
+            current.append({'start':current_time,'offer_burst':row.offer_burst,
+                            'view':None, 'complete':None})
 
         elif current_event=='offer viewed':
             if len(current)>1:
@@ -63,7 +63,7 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
             elif current:
                 current[0]['view'] = current_time
             else:
-                to_be_appended['viewed_after'][-1]=True
+                to_be_appended['viewed_after'][-1]=1
 
         elif current_event=='offer completed':
             if current[0]['view'] is None and view_unknown:
@@ -81,10 +81,14 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
     
     nrows = len(to_be_appended['viewed'])
     
+    to_be_appended['person']=[person_id]*nrows
+    to_be_appended['offer']=[offer_index]*nrows
+   
+    
     for x in ['gender','age','became_member_on','income']:
         to_be_appended[x] = [this_person[x]]*nrows
     for x in ['reward','difficulty','duration','offer_type',
-              'id','email', 'mobile','social','web']:
+              'id', 'mobile','social','web']:
         to_be_appended[x] = [this_offer[x]]*nrows
 
     new_df = pd.DataFrame(to_be_appended)
@@ -93,7 +97,7 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
     else:
         return pd.DataFrame(new_df)
     
-def create_person_offer(transcript,portfolio,profile):
+def create_person_offer(transcript,portfolio,profile,person_transaction):
     """ A function to generete a new df with person and offer per row,
 
     Arguments:
@@ -104,12 +108,73 @@ def create_person_offer(transcript,portfolio,profile):
     Returns:
         person_offer_df -- new DataFrame
     """    
+    tqdm.pandas()
     person_offer_df = None
+
     # This will not include transaction, so we need another new table for those.
     for (person_id, offer_index), transcript_grouped in tqdm(transcript.dropna(subset=['offer_index']).groupby(['person','offer_index'])):
         this_offer = portfolio.loc[offer_index]
         this_person = profile.loc[person_id]
         person_offer_df = append_one_person_offer(person_offer_df, this_offer, person_id, offer_index, transcript_grouped, this_person)
+
+    # TODO, the stuff above and the stuff below was originally made at completly different times and
+    # was different files and functions, now I put it into one, however, there's still probably alot
+    # that can be done together instead of looping multiple times on the same stuff... but not reealy needed, as it works
+    # but could probably make it way faster...
+    person_offer_df['before_start'] = 0
+    person_offer_df['same_day_start'] = 0
+    person_offer_df['after_start'] = 0
+    person_offer_df['before_view'] = 0
+    person_offer_df['same_day_view'] = 0
+    person_offer_df['after_view'] =0
+    person_offer_df['before_complete'] = 0
+    person_offer_df['same_day_complete']= 0
+    person_offer_df['after_complete'] = 0
+    person_offer_df['w_before'] = 0
+    person_offer_df['sum_during'] = 0
+    person_offer_df['mean_during'] = 0
+    person_offer_df['w_after'] = 0
+    person_offer_df = person_offer_df.progress_apply(get_before_after_mean,person_transaction=person_transaction, axis=1) 
+         
+    
+    person_offer_df['viewed_reltime']=np.nan
+    person_offer_df['completed_reltime']=np.nan
+
+    def absulute2relative_time(x):
+        """Converts absolute time (hours since start of simulation)
+        to hours since offer recieved (start)
+        """        
+        if x.viewed:
+            x.viewed_reltime=x.viewed_time-x.start
+            
+        if x.completed:
+            x.completed_reltime=x.completed_time-x.start
+            
+        return x
+
+    person_offer_df = person_offer_df.progress_apply(absulute2relative_time, axis=1)
+    
+    #makes it easier to access these combinations
+    person_offer_df['complete_viewed'] = (person_offer_df['completed'] & person_offer_df['viewed']).astype(int)
+    person_offer_df['complete_not_viewed'] = (person_offer_df['completed'] & ~person_offer_df['viewed']).astype(int)
+    person_offer_df['not_complete_not_viewed'] = (~person_offer_df['completed'] & ~person_offer_df['viewed']).astype(int)
+    person_offer_df['not_complete_viewed'] = (~person_offer_df['completed'] & person_offer_df['viewed']).astype(int)
+    person_offer_df['completed'] = person_offer_df['completed'].astype(int)
+    person_offer_df['viewed'] = person_offer_df['viewed'].astype(int)
+    
+    #calculates diff in sales before and after an event
+    for x in ['start','view','complete']:
+        person_offer_df[f'diff_{x}'] = person_offer_df[f'after_{x}'] - person_offer_df[f'before_{x}'] 
+        
+    person_offer_df[f'diff_offer'] =  person_offer_df[f'w_after'] - person_offer_df[f'w_before']
+    
+    #recalculates became_member_on to member_since instead (where newest member is 0) in days
+    person_offer_df['became_member_on'] = pd.to_datetime(person_offer_df['became_member_on'], format='%Y-%m-%d')
+    person_offer_df['member_since_days'] = (person_offer_df['became_member_on'].max() - person_offer_df['became_member_on']).dt.days
+    
+    #remve these wrong ages and turn to NaN
+    person_offer_df['age']=person_offer_df['age'].apply(lambda x:np.nan if x==118 else x)
+    
     return person_offer_df
 
 
@@ -142,8 +207,8 @@ def get_before_after_mean(x, person_transaction):
             before -- mean daily spending before event
             current -- mean daily spending on event day
             after -- mean daily spending after event
-        """        
-        if np.isnan(time):
+        """      
+        if time is None or np.isnan(time):
             return [], [], []
         
         currentday = int(time)//24
@@ -153,10 +218,10 @@ def get_before_after_mean(x, person_transaction):
         return (before, current, after)
     
     def split_between(time_view,time_complete, duration, columns):
-        if np.isnan(time_view):
+        if time_view is None or np.isnan(time_view):
             return []
         start = int(time_view)//24
-        if np.isnan(time_complete):
+        if time_complete is None or np.isnan(time_complete):
             end = start + duration
         else:
             end = int(time_complete)//24
