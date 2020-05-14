@@ -254,18 +254,7 @@ def range_to_cat(df,col,n):
     df = pd.concat([df, newcols], axis=1)
     return df, list(newcols)
 
-def train_model(df,model,y_cols, x_cols, x_convert_to_cat=[]):
-    '''
-    Arguments:
-    df -- dataframe to learn from
-    model -- model used to train
-    y_cols -- columns used for ground truth 
-    x_cols -- columns to learn from
-    x_conver_to cat -- list of tuples pairs, will be added to x
-                    these should NOT be in x_cols too 
-            
-    Returns:
-    '''
+def prepare_data(df,y_cols, x_cols, x_convert_to_cat=[]):
     assert len(set(x_cols).intersection(set(y_cols))) == 0
     for col in x_convert_to_cat:
         df, new_x = range_to_cat(df, *col)
@@ -278,7 +267,22 @@ def train_model(df,model,y_cols, x_cols, x_convert_to_cat=[]):
 
     #split the data into train and test
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state=42)
+    return X_train, X_test, y_train, y_test, x_cols
 
+def train_model(model, X_train, y_train, X_test,y_test):
+    '''
+    Arguments:
+    df -- dataframe to learn from
+    model -- model used to train
+    y_cols -- columns used for ground truth 
+    x_cols -- columns to learn from
+    x_conver_to cat -- list of tuples pairs, will be added to x
+                    these should NOT be in x_cols too 
+            
+    Returns:
+    '''
+
+    #
     #fit the model and obtain pred response
     model.fit(X_train, y_train)
     y_test_preds = model.predict(X_test)
@@ -287,7 +291,7 @@ def train_model(df,model,y_cols, x_cols, x_convert_to_cat=[]):
     y_train_proba = model.predict_proba(X_train)
 
 
-    return model, x_cols, y_test_preds, y_train_preds, y_test, y_train, y_test_proba, y_train_proba #, X, y
+    return model, y_test_preds, y_train_preds, y_test_proba, y_train_proba
 
 
 def print_classification_report(y_train,y_test,y_train_preds,y_test_preds):
@@ -318,11 +322,15 @@ def print_classification_report(y_train,y_test,y_train_preds,y_test_preds):
             
 def printRocCurves(y_test,y_test_proba,y_cols, x_axis_max=1, print_thold=False):
 
-    # if len(y_test.shape) == 1 or y_test.shape[-1] <= 1:
-    #     y_test = [y_test]
-    #     y_test_preds = [y_test_preds]
-    plt.figure(figsize=(10,10))
-    for name, y, p in zip(y_cols, np.array(y_test).T, np.array(y_test_proba)[:,:,1]):
+    #print(np.array(y_test).T.shape, np.array(y_test_proba).shape)
+    #print(np.array(y_test).T.shape, np.array(y_test_proba)[...,1,None].shape)
+    plt.figure(figsize=(5,5))
+    if len( np.array(y_test_proba).shape) == 2:
+        y_test_proba= np.array(y_test_proba)[...,1,None].T
+    else:
+        y_test_proba= np.array(y_test_proba)[:,:,1]
+        
+    for name, y, p in zip(y_cols, np.array(y_test).T, y_test_proba):
         fpr, tpr, thresholds= roc_curve(y,p)
         thresholds = np.clip(thresholds, 0.0, 1.0)
         roc_auc = auc(fpr, tpr)
@@ -356,11 +364,16 @@ def printRocCurves(y_test,y_test_proba,y_cols, x_axis_max=1, print_thold=False):
     plt.show()
 
 def plot_cmatrix(y_test, y_test_preds, y_cols):
-    cm = confusion_matrix(y_test.values.argmax(axis=1), y_test_preds.argmax(axis=1))
+    if len(y_test.shape)>1 and y_test.shape[1]>1:
+        cm = confusion_matrix(y_test.values.argmax(axis=1), y_test_preds.argmax(axis=1))
+    else:
+        cm = confusion_matrix(y_test.values, y_test_preds)
+        if len(y_cols)==1:
+            y_cols = ["not " + y_cols[0],y_cols[0]]
     #cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
     df_cm = pd.DataFrame(cm, index = y_cols,
                     columns = y_cols)
-    plt.figure(figsize = (10,7))
+    plt.figure(figsize = (5,5))
     sns.heatmap(df_cm, annot=True,fmt="d")
     plt.show()
 
@@ -369,7 +382,10 @@ def print_feature_importance(model, x_cols):
     try:
         importances = model.feature_importances_
         # calculate standard deviation
-        std = np.std([tree.feature_importances_ for tree in model.estimators_],axis=0)
+        try:
+            std = np.std([tree.feature_importances_ for tree in model.estimators_],axis=0)
+        except:
+            std=None
         indices = np.argsort(importances)[::-1]
         feature_list = x_cols
         ff = np.array(feature_list)
@@ -377,8 +393,12 @@ def print_feature_importance(model, x_cols):
         # plot the figure
         plt.figure(figsize = (15,5))
         plt.title("Feature importances")
-        plt.bar(range(len(x_cols)), importances[indices],yerr=std[indices])
+        if std is not None:
+            yerr = std[indices] 
+        else:
+            yerr = None
+        plt.bar(range(len(x_cols)), importances[indices],yerr=yerr)
         plt.xticks(range(len(x_cols)), ff[indices], rotation=90)
         plt.show()
-    except:
-        print('could not print features importance')
+    except Exception as e:
+        print('could not print features importance',e)
