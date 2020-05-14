@@ -308,15 +308,20 @@ def range_to_cat(df,col,n):
     Arguments:
         df -- ipnut DataFrama
         col -- Column to be modified
-        n -- number of categories
+        n -- number of categories (None to use all)
 
     Returns:
         df -- input dataframe with n new columns
         newcols -- list of name of the new columns
     """    
-    cat_df, bins = pd.cut(df[col], n, retbins=True)
+    if n is None:
+        cat_df = df[col]
+    else:
+        cat_df = pd.cut(df[col], n)
+
     newcols = pd.get_dummies(cat_df, prefix=col, prefix_sep='_', drop_first=True, dummy_na=False) 
-    newcols.columns = clean_cut_name(newcols.columns)
+    if n is not None:
+        newcols.columns = clean_cut_name(newcols.columns)
     df = pd.concat([df, newcols], axis=1)
     return df, list(newcols)
 
@@ -429,7 +434,7 @@ def printRocCurves(y_test,y_test_proba,y_cols, x_axis_max=1, print_thold=False):
 
     plt.show()
 
-def plot_cmatrix(y_test, y_test_preds, y_cols):
+def plot_cmatrix(y_test, y_test_preds, y_cols, name=None):
     if len(y_test.shape)>1 and y_test.shape[1]>1:
         cm = confusion_matrix(y_test.values.argmax(axis=1), y_test_preds.argmax(axis=1))
     else:
@@ -441,6 +446,10 @@ def plot_cmatrix(y_test, y_test_preds, y_cols):
                     columns = y_cols)
     plt.figure(figsize = (5,5))
     sns.heatmap(df_cm, annot=True,fmt="d")
+    plt.xlabel('Predicted class')
+    plt.ylabel('True class')
+    if name:
+        plt.title(f"Confusion Matrix for {name}")
     plt.show()
 
 def print_feature_importance(model, x_cols):
