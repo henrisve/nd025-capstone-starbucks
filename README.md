@@ -13,7 +13,7 @@ The blog post for this project can be found here: <to be inserted when published
 # File Descriptions
 This repo contaians the following files \
 
-.
+.\
 ├── helper_functions.py                 # All the helper functions used\
 ├── Starbucks_Capstone_notebook.ipynb   # The main notebook \
 ├── README.md                           # This file\
