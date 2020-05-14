@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report,confusion_matrix,roc_curve,auc
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index, transcript_grouped,this_person):
+def append_one_person_offer(to_be_appended, this_offer, person_id, offer_index, transcript_grouped,this_person):
     '''
     A function to generete a new df with person and offer per row,
     In many cases this will only add one row,.
@@ -26,10 +26,14 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
     Returns:
     person_offer_df -- as input but with the new row(s).
     '''
-
-    to_be_appended = defaultdict(list)
+    if to_be_appended is None:
+        to_be_appended = defaultdict(list)
+        
     def append_final(item):
         # this metod takes complete item and appends it
+        to_be_appended['person'].append(person_id)
+        to_be_appended['offer'].append(offer_index)
+        
         to_be_appended['start'].append(item['start'])
         to_be_appended['viewed_time'].append(item['view'])
         to_be_appended['completed_time'].append(item['complete'])
@@ -37,6 +41,13 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
         to_be_appended['completed'].append(item['complete'] is not None)
         to_be_appended['viewed_after'].append(0)
         to_be_appended['offer_burst'].append(item['offer_burst'])
+
+        for x in ['gender','age','became_member_on','income']:
+            to_be_appended[x].append(this_person[x])
+            
+        for x in ['reward','difficulty','duration','offer_type',
+                  'id', 'mobile','social','web']:
+            to_be_appended[x].append(this_offer[x])
 
     current = []
     view_unknown = []
@@ -77,25 +88,12 @@ def append_one_person_offer(person_offer_df, this_offer, person_id, offer_index,
             item['view'] = view_unknown.pop(0)
         append_final(item)
     
-    # Add common cells for all these
-    
-    nrows = len(to_be_appended['viewed'])
-    
-    to_be_appended['person']=[person_id]*nrows
-    to_be_appended['offer']=[offer_index]*nrows
-   
-    
-    for x in ['gender','age','became_member_on','income']:
-        to_be_appended[x] = [this_person[x]]*nrows
-    for x in ['reward','difficulty','duration','offer_type',
-              'id', 'mobile','social','web']:
-        to_be_appended[x] = [this_offer[x]]*nrows
-
-    new_df = pd.DataFrame(to_be_appended)
-    if person_offer_df is not None:
-        return person_offer_df.append(new_df, ignore_index = True) 
-    else:
-        return pd.DataFrame(new_df)
+    return to_be_appended
+    # new_df = pd.DataFrame(to_be_appended)
+    # if person_offer_df is not None:
+    #     return person_offer_df.append(new_df, ignore_index = True) 
+    # else:
+    #     return pd.DataFrame(new_df)
     
 def create_person_offer(transcript,portfolio,profile,person_transaction):
     """ A function to generete a new df with person and offer per row,
@@ -109,13 +107,15 @@ def create_person_offer(transcript,portfolio,profile,person_transaction):
         person_offer_df -- new DataFrame
     """    
     tqdm.pandas()
-    person_offer_df = None
+    to_be_appended = None
 
     # This will not include transaction, so we need another new table for those.
     for (person_id, offer_index), transcript_grouped in tqdm(transcript.dropna(subset=['offer_index']).groupby(['person','offer_index'])):
         this_offer = portfolio.loc[offer_index]
         this_person = profile.loc[person_id]
-        person_offer_df = append_one_person_offer(person_offer_df, this_offer, person_id, offer_index, transcript_grouped, this_person)
+        to_be_appended = append_one_person_offer(to_be_appended, this_offer, person_id, offer_index, transcript_grouped, this_person)
+    
+    person_offer_df = pd.DataFrame(to_be_appended)
 
     # TODO, the stuff above and the stuff below was originally made at completly different times and
     # was different files and functions, now I put it into one, however, there's still probably alot
