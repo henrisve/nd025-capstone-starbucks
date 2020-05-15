@@ -452,7 +452,7 @@ def plot_cmatrix(y_test, y_test_preds, y_cols, name=None):
         plt.title(f"Confusion Matrix for {name}")
     plt.show()
 
-def print_feature_importance(model, x_cols):
+def print_feature_importance(model, x_cols, name=None):
     # Features importances
     try:
         importances = model.feature_importances_
@@ -474,6 +474,8 @@ def print_feature_importance(model, x_cols):
             yerr = None
         plt.bar(range(len(x_cols)), importances[indices],yerr=yerr)
         plt.xticks(range(len(x_cols)), ff[indices], rotation=90)
+        if name:
+            plt.title(f"Feature_importance for {name}")
         plt.show()
     except Exception as e:
         print('could not print features importance',e)
