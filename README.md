@@ -8,7 +8,7 @@ It's about analysing simulated data from starbucks, and try to predict
 how a customer will react to an offer based on demographic and past
 transaction data.
 
-The blog post for this project can be found here: <to be inserted when published>
+The blog post for this project can be found here: https://medium.com/@henriksvensson_1896/starbucks-analysis-of-simulated-data-c033e210a4d1?sk=e35372e75fdaa37d7b15b5cdeb3fce51
 
 # File Descriptions
 This repo contaians the following files:
